@@ -1,0 +1,55 @@
+# Customer deployment from the prebuilt GHCR image - published to the public repository
+# team-netz-Consulting/GroupedApplication-Container by release-container.sh. The docker-compose.yml
+# in the repository root builds from source instead and stays the development/self-build variant.
+services:
+  app:
+    image: "${GROUPED_APP_IMAGE:-ghcr.io/team-netz-consulting/groupedapplication}:${GROUPED_APP_IMAGE_TAG:?Set GROUPED_APP_IMAGE_TAG in .env}"
+    restart: unless-stopped
+    # The license is bound to the "hostname" device claim - a fixed name keeps it valid across
+    # container recreation and image updates (Docker would otherwise use the random container ID).
+    hostname: groupedapplication
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      TZ: ${TZ:-Europe/Berlin}
+      LicenseManager__BaseUrl: ${LICENSE_MANAGER_BASE_URL:-https://license.team-netz.net:5181}
+      LicenseManager__AllowInvalidCertificate: ${LICENSE_MANAGER_ALLOW_INVALID_CERTIFICATE:-false}
+      LicenseManager__CustomerName: ${LICENSE_CUSTOMER_NAME:?Set LICENSE_CUSTOMER_NAME in .env}
+      LicenseManager__LicensePath: /var/lib/groupedapplication/license/groupedapplication.license
+      LicenseManager__SettingsPath: /var/lib/groupedapplication/license/settings.json
+      ConnectionStrings__DefaultConnection: "Server=db;Database=GroupedApplication;User Id=sa;Password=${DB_SA_PASSWORD:?Set DB_SA_PASSWORD in .env};TrustServerCertificate=True;MultipleActiveResultSets=true"
+      Jwt__Issuer: GroupedApplication
+      Jwt__Audience: GroupedApplication
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env}
+      Jwt__AccessTokenLifetimeMinutes: "1440"
+      Jwt__RefreshTokenLifetimeDays: "14"
+      # Creates a first SystemOwner account on startup if no user with this email exists yet.
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes:
+      - "${GROUPED_APP_DATA_ROOT:?Set GROUPED_APP_DATA_ROOT in .env}/uploads:/app/wwwroot/uploads"
+      - "${GROUPED_APP_DATA_ROOT}/logs:/app/logs"
+      # Activated license and License Manager settings survive container recreation.
+      - "${GROUPED_APP_DATA_ROOT}/license:/var/lib/groupedapplication/license"
+      # Customer-specific internal root/intermediate CA certs (.crt/.pem), trusted at startup.
+      - "${GROUPED_APP_DATA_ROOT}/certs:/certs:ro"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: ${MSSQL_PID:-Express}
+      MSSQL_SA_PASSWORD: ${DB_SA_PASSWORD}
+    volumes:
+      - "${GROUPED_APP_DATA_ROOT}/mssql:/var/opt/mssql"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

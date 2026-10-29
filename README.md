@@ -16,7 +16,7 @@ ghcr.io/team-netz-consulting/groupedapplication
 Für produktive Installationen immer einen freigegebenen Versionstag verwenden:
 
 ```bash
-docker pull ghcr.io/team-netz-consulting/groupedapplication:2026.10.29.1
+docker pull ghcr.io/team-netz-consulting/groupedapplication:2026.10.29.2
 ```
 
 `latest` verweist auf die zuletzt freigegebene Version, sollte aber nicht für dauerhaft
